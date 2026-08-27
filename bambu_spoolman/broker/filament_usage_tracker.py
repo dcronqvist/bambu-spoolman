@@ -16,7 +16,12 @@ from bambu_spoolman.broker.checkpoint import (
 )
 from bambu_spoolman.gcode.bambu import extract_gcode
 from bambu_spoolman.gcode.parser import evaluate_gcode
-from bambu_spoolman.settings import EXTERNAL_SPOOL_ID, load_settings
+from bambu_spoolman.settings import (
+    EXTERNAL_SPOOL_ID,
+    load_settings,
+    tray_id_to_location_name,
+    get_location_for_tray_id,
+)
 from bambu_spoolman.spoolman import new_client
 
 
@@ -205,8 +210,6 @@ class FilamentUsageTracker:
 
         config = load_settings()
 
-        trays = config.get("trays", {})
-
         for filament, usage in layer_usage.items():
             logger.debug("Spending {}mm of filament {}", usage, filament)
 
@@ -219,18 +222,42 @@ class FilamentUsageTracker:
 
             logger.debug("Real mapping for filament {} is {}", filament, real_mapping)
 
-            # Load the filament from the configuration
-            spoolman_spool = trays.get(str(real_mapping))
-            if spoolman_spool is None:
-                logger.error("Failed to find tray for filament {}", filament)
+            # Get the Spoolman location name for this physical tray position
+            spoolman_location = get_location_for_tray_id(config, real_mapping)
+            
+            if spoolman_location is None:
+                logger.warning(
+                    "No Spoolman location mapped for tray ID {}, filament consumption skipped",
+                    real_mapping,
+                )
                 continue
 
             logger.debug(
-                "Spoolman spool for filament {} is {}", filament, spoolman_spool
+                "Spoolman location for tray ID {} is '{}'", real_mapping, spoolman_location
             )
 
-            # Spend the filament
-            self.spoolman_client.consume_spool(spoolman_spool, length=usage)
+            # Get all spools at this location, sorted by ID (ascending)
+            spools_at_location = self.spoolman_client.get_spools_by_location(
+                spoolman_location
+            )
+
+            if not spools_at_location:
+                logger.warning(
+                    "No spools found at Spoolman location '{}', filament consumption skipped",
+                    spoolman_location,
+                )
+                continue
+
+            # Consume from the first (lowest ID) spool
+            target_spool = spools_at_location[0]
+            logger.info(
+                "Consuming {}mm from spool ID {} at location '{}'",
+                usage,
+                target_spool["id"],
+                spoolman_location,
+            )
+
+            self.spoolman_client.consume_spool(target_spool["id"], length=usage)
 
     def _download_model(self, model_url):
         logger.debug("Downloading model from URL: {}", model_url)

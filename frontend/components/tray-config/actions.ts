@@ -50,3 +50,24 @@ export async function updateTrayAssignment(
     };
   }
 }
+
+export async function updateLocationMapping(
+  physicalLocation: string,
+  spoolmanLocation: string,
+): Promise<UpdateTrayAssignmentActionData> {
+  try {
+    await grpcClient.updateTray({
+      physicalLocation,
+      spoolmanLocation,
+    });
+    revalidateTag("settings", "max");
+    return {
+      error: null,
+    };
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error ? error.message : "An unknown error occurred",
+    };
+  }
+}

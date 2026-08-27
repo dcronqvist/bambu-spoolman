@@ -31,6 +31,9 @@ service BambuSpoolman {
 
     // Sets a tray's UUID
     rpc SetTrayUUID(SetSpoolUUIDRequest) returns (google.protobuf.Empty);
+
+    // Gets locations with their spools
+    rpc GetLocationsWithSpools(google.protobuf.Empty) returns (GetLocationsWithSpoolsResponse);
 }
 
 message TrayCountResponse {
@@ -69,14 +72,30 @@ message SetSpoolUUIDRequest {
 message UpdateTrayRequest {
   int64 tray_id = 1;
   int64 spool_id = 2;
+  // New location-based mapping fields
+  string physical_location = 3;  // e.g., "AMS1-Slot1", "External"
+  string spoolman_location = 4;  // e.g., "Shelf A", name of location in Spoolman
 }
 
 message SettingsResponse {
     map<string, int64> trays = 1;
     int64 tray_count = 2;
     repeated int64 locked_trays = 3;
+    // New location-based mapping: physical_location -> spoolman_location
+    map<string, string> location_mapping = 4;
+    // Available locations in Spoolman
+    repeated string available_locations = 5;
 }
 
 message Features {
     bool tray_locking = 1;
+}
+
+message LocationWithSpools {
+    string location = 1;
+    repeated Spool spools = 2;
+}
+
+message GetLocationsWithSpoolsResponse {
+    repeated LocationWithSpools locations = 1;
 }

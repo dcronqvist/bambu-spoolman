@@ -62,84 +62,46 @@ class BambuSpoolmanServicer(bambu_spoolman_pb2_grpc.BambuSpoolmanServicer):
 
     async def GetSettings(self, request: Empty, context: ServicerContext):
         settings = load_settings()
+        spoolman_locations = spoolman_instance().get_locations()
         return pb2.SettingsResponse(
             trays=settings.get("trays", {}),
             tray_count=settings.get("tray_count", 0),
             locked_trays=settings.get("locked_trays", []),
+            location_mapping=settings.get("location_mapping", {}),
+            available_locations=spoolman_locations,
         )
 
     async def UpdateTray(
         self, request: pb2.UpdateTrayRequest, context: ServicerContext
     ):
-        tray_id = str(request.tray_id)
-        spool_id = request.spool_id
-
         settings = load_settings()
-        trays = settings.get("trays", {})
 
-        locked_trays = settings.get("locked_trays", [])
-        logger.debug(f"Locked trays: {locked_trays}")
-        if tray_id in locked_trays:
-            await context.abort(
-                grpc.StatusCode.INVALID_ARGUMENT, "Tray is locked and cannot be changed"
+        # Handle location-based mapping
+        if request.physical_location and request.spoolman_location:
+            location_mapping = settings.get("location_mapping", {})
+            
+            # Validate that the Spoolman location exists
+            available_locations = spoolman_instance().get_locations()
+            if request.spoolman_location not in available_locations:
+                await context.abort(
+                    grpc.StatusCode.INVALID_ARGUMENT,
+                    f"Spoolman location '{request.spoolman_location}' does not exist",
+                )
+            
+            # Update the mapping
+            location_mapping[request.physical_location] = request.spoolman_location
+            settings["location_mapping"] = location_mapping
+            save_settings(settings)
+            logger.info(
+                f"Updated location mapping: {request.physical_location} -> {request.spoolman_location}"
             )
+            return Empty()
 
-        tray_id_int = int(tray_id)
-
-        # Get the old spool_id if there was one, so we can clear its tray field
-        # Try both string and int keys for compatibility
-        old_spool_id = trays.get(tray_id) or trays.get(tray_id_int)
-
-        if spool_id == -1:
-            # Clearing the tray assignment
-            if tray_id in trays:
-                del trays[tray_id]
-                settings["trays"] = trays
-
-            # Clear the tray fields in Spoolman for the old spool
-            if old_spool_id is not None:
-                try:
-                    spoolman_instance().set_active_tray(old_spool_id, None, None)
-                except Exception as e:
-                    logger.error(
-                        f"Failed to clear tray fields for spool {old_spool_id}: {e}"
-                    )
-        else:
-            spool_id = int(spool_id)
-            spool = spoolman_instance().get_spool(spool_id)
-            if spool is None:
-                await context.abort(grpc.StatusCode.NOT_FOUND, "Spool not found")
-
-            if spool_id in trays.values():
-                if trays.get(tray_id, None) != spool_id:
-                    await context.abort(
-                        grpc.StatusCode.INVALID_ARGUMENT,
-                        "Spool is already assigned to a different tray",
-                    )
-
-            trays[tray_id] = spool_id
-
-            # Set the tray fields in Spoolman for the new spool
-            # Calculate AMS and tray slot (both 1-indexed for display)
-            ams_num = (tray_id_int // 4) + 1
-            tray_num = (tray_id_int % 4) + 1
-
-            try:
-                spoolman_instance().set_active_tray(spool_id, ams_num, tray_num)
-            except Exception as e:
-                logger.error(f"Failed to set tray fields for spool {spool_id}: {e}")
-
-            # Clear the tray fields for the old spool if it was different
-            if old_spool_id is not None and old_spool_id != spool_id:
-                try:
-                    spoolman_instance().set_active_tray(old_spool_id, None, None)
-                except Exception as e:
-                    logger.error(
-                        f"Failed to clear tray fields for old spool {old_spool_id}: {e}"
-                    )
-
-        settings["trays"] = trays
-        save_settings(settings)
+        # If neither location-based nor legacy fields are provided, abort
+        await context.abort(
+            grpc.StatusCode.INVALID_ARGUMENT,
+            "Must provide physical_location and spoolman_location"
+        )
         return Empty()
 
     async def GetSpoolByUUID(
@@ -178,6 +140,26 @@ class BambuSpoolmanServicer(bambu_spoolman_pb2_grpc.BambuSpoolmanServicer):
                 grpc.StatusCode.INTERNAL, "Failed to set tray UUID for spool"
             )
         return Empty()
+
+    async def GetLocationsWithSpools(
+        self, request: Empty, context: ServicerContext
+    ):
+        """Get all Spoolman locations with their spools"""
+        locations = spoolman_instance().get_locations()
+        result = []
+        
+        for location in locations:
+            spools = spoolman_instance().get_spools_by_location(location)
+            location_with_spools = pb2.LocationWithSpools(
+                location=location,
+                spools=[
+                    ParseDict(spool, spoolman_pb2.Spool(), ignore_unknown_fields=True)
+                    for spool in spools
+                ],
+            )
+            result.append(location_with_spools)
+        
+        return pb2.GetLocationsWithSpoolsResponse(locations=result)
 
 
 async def serve(host: str = "0.0.0.0", port: int = 50051):

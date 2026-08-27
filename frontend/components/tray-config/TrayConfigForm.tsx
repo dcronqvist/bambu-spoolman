@@ -1,203 +1,173 @@
 "use client";
 
-import { Spool } from "@/lib/proto/bambu_spoolman/grpc/spoolman";
-import { SpoolRadioGroup } from "./SpoolRadioGroup";
-import { Button, ButtonLoading } from "../ui/button";
-import { useActionState, useMemo, useState } from "react";
-import {
-  updateTrayAssignment,
-  type UpdateTrayAssignmentActionData,
-} from "./actions";
+import { useState, useTransition } from "react";
+import { updateLocationMapping } from "./actions";
 import { Alert } from "../ui/alert";
-import { AlertCircle, SearchIcon } from "lucide-react";
+import { AlertCircle } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { IDetectedBarcode, Scanner } from "@yudiel/react-qr-scanner";
-import { useCameraAvailable } from "@/lib/hooks/useCameraAvailable";
-import {
-  InputGroup,
-  InputGroupAddon,
-  InputGroupInput,
-} from "../ui/input-group";
 
-const URL_REGEX = /https?:\/\/.*\/(\d+)/i;
-const SPOOL_ID_REGEX = /web\+spoolman:s-(\d+)/i;
+type Filament = {
+  color_hex?: string;
+  material?: string;
+  vendor?: {
+    name?: string;
+  };
+  name?: string;
+};
+
+type Spool = {
+  id?: number;
+  filament?: Filament;
+};
+
+type LocationWithSpools = {
+  location: string;
+  spools: Spool[];
+};
 
 type Props = {
-  trayId: number;
-  spool: Spool | null;
-  allSpools: Spool[];
-  selectedSpools: number[];
+  physicalLocation: string;
+  currentMapping: string | null;
+  locationsWithSpools: LocationWithSpools[];
 };
 
-type QrScannerProps = {
-  onScan: (result: IDetectedBarcode[]) => void;
-  cancelScan: () => void;
-};
+function getSpoolDisplay(spool: Spool): string {
+  const parts = [];
+  if (spool.id) parts.push(`#${spool.id}`);
+  if (spool.filament?.vendor?.name) parts.push(spool.filament.vendor.name);
+  if (spool.filament?.material) parts.push(spool.filament.material);
+  if (spool.filament?.name) parts.push(spool.filament.name);
 
-function QrScanner(props: QrScannerProps) {
-  return (
-    <>
-      <Scanner
-        onScan={props.onScan}
-        formats={["qr_code"]}
-        components={{
-          torch: false,
-        }}
-      />
-      <Button variant="destructive" className="mt-4" onClick={props.cancelScan}>
-        Cancel Scanning
-      </Button>
-    </>
-  );
+  return parts.length > 0 ? parts.join(" ") : `Spool #${spool.id}`;
+}
+
+function getColorFromHex(hex?: string): string {
+  return hex || "#e5e7eb"; // default gray if no color
 }
 
 export function TrayConfigForm(props: Props) {
-  const [selectedSpool, setSelectedSpool] = useState(
-    props.spool?.id.toString() ?? "",
+  const [selectedLocation, setSelectedLocation] = useState(
+    props.currentMapping,
   );
-  const [changed, setChanged] = useState(false);
-  const [qrScanning, setQrScanning] = useState(false);
-  const [qrScanError, setQrScanError] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const cameraAvailable = useCameraAvailable();
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
   const router = useRouter();
 
-  const [state, formAction, isPending] = useActionState(
-    async (_prev: UpdateTrayAssignmentActionData) => {
-      const result = await updateTrayAssignment(
-        props.trayId,
-        Number(selectedSpool),
-      );
+  const handleSelectLocation = (location: string) => {
+    setSelectedLocation(location);
+    setError(null);
 
-      if (!result.error) {
+    startTransition(async () => {
+      const result = await updateLocationMapping(
+        props.physicalLocation,
+        location,
+      );
+      if (result.error) {
+        setError(result.error);
+      } else {
         router.refresh();
       }
-
-      return result;
-    },
-    {
-      error: null,
-    },
-  );
-
-  const getSpoolId = (result: IDetectedBarcode) => {
-    const urlMatch = result.rawValue.match(URL_REGEX);
-    if (urlMatch) {
-      return Number(urlMatch[1]);
-    }
-    const spoolIdMatch = result.rawValue.match(SPOOL_ID_REGEX);
-    if (spoolIdMatch) {
-      return Number(spoolIdMatch[1]);
-    }
-    return null;
-  };
-
-  const handleScan = (result: IDetectedBarcode[]) => {
-    if (result.length === 0) {
-      setQrScanError("No QR code detected. Please try again.");
-      return;
-    }
-    if (result.length > 1) {
-      setQrScanError(
-        "Multiple QR codes detected. Please ensure only one QR code is visible to the camera.",
-      );
-      return;
-    }
-    const spoolId = getSpoolId(result[0]);
-    if (!spoolId) {
-      setQrScanError("Invalid QR code format.");
-      return;
-    }
-    setSelectedSpool(spoolId.toString());
-    setChanged(true);
-    setQrScanning(false);
-  };
-
-  const filteredSpools = useMemo(() => {
-    if (!searchQuery) {
-      return props.allSpools;
-    }
-    // Filter spools based on the following criteria:
-    // 1. Spool id
-    // 2. Material
-    // 3. Vendor
-    return props.allSpools.filter((spool) => {
-      const query = searchQuery.toLowerCase();
-      return (
-        spool.id.toString().includes(query) ||
-        spool.filament?.material.toLowerCase().includes(query) ||
-        spool.filament?.vendor?.name.toLowerCase().includes(query)
-      );
     });
-  }, [searchQuery, props.allSpools]);
+  };
 
   return (
-    <>
-      {qrScanError && (
-        <Alert variant="destructive" className="mb-5">
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-2xl font-bold">{props.physicalLocation}</h2>
+      </div>
+
+      {error && (
+        <Alert variant="destructive">
           <AlertCircle />
-          {qrScanError}
+          {error}
         </Alert>
       )}
-      {qrScanning ? (
-        <QrScanner
-          onScan={handleScan}
-          cancelScan={() => setQrScanning(false)}
-        />
-      ) : (
-        <>
-          {cameraAvailable && (
-            <Button
-              className="w-full mb-2"
-              onClick={() => {
-                setQrScanError(null);
-                setQrScanning(true);
-              }}
-            >
-              Scan QR Code
-            </Button>
-          )}
-          <InputGroup className="w-full mb-3">
-            <InputGroupInput
-              placeholder="Search for a spool"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            <InputGroupAddon>
-              <SearchIcon />
-            </InputGroupAddon>
-          </InputGroup>
 
-          <form action={formAction}>
-            {state?.error && (
-              <Alert variant="destructive" className="mb-5">
-                <AlertCircle />
-                {state?.error}
-              </Alert>
-            )}
-            <SpoolRadioGroup
-              spools={filteredSpools}
-              value={selectedSpool}
-              onValueChange={(e) => {
-                setSelectedSpool(e);
-                setChanged(true);
-              }}
-              disabled={isPending}
-              selected={props.selectedSpools}
-              initialSpool={props.spool}
-            />
-            <Button
-              variant="default"
-              className="mt-4 float-right"
-              type="submit"
-              disabled={isPending || !changed}
-            >
-              <ButtonLoading loading={isPending} />
-              Update
-            </Button>
-          </form>
-        </>
+      <div>
+        <h3 className="text-sm font-medium text-gray-600 mb-4">
+          Map to Spoolman location
+        </h3>
+
+        <div className="space-y-3">
+          {props.locationsWithSpools.length === 0 ? (
+            <p className="text-gray-500">No locations available in Spoolman</p>
+          ) : (
+            props.locationsWithSpools.map((locationData) => {
+              const location = locationData.location;
+              const spools = locationData.spools;
+              const isSelected = selectedLocation === location;
+
+              return (
+                <button
+                  key={location}
+                  onClick={() => handleSelectLocation(location)}
+                  disabled={isPending}
+                  className={`w-full p-4 text-left border-2 rounded-lg transition-all ${
+                    isSelected
+                      ? "border-blue-500 bg-blue-50"
+                      : "border-gray-200 bg-white hover:border-gray-300"
+                  } ${isPending ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
+                >
+                  <div className="flex justify-between items-start gap-4">
+                    <div className="flex-1">
+                      <h4 className="font-semibold text-base mb-3">
+                        {location}
+                      </h4>
+
+                      {spools.length === 0 ? (
+                        <p className="text-sm text-gray-500 italic">
+                          No spools in this location
+                        </p>
+                      ) : (
+                        <div className="flex flex-wrap gap-2">
+                          {spools.map((spool, idx) => (
+                            <div
+                              key={spool.id}
+                              className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
+                                idx === 0
+                                  ? "bg-blue-500 text-white border-2 border-blue-600"
+                                  : "bg-gray-100 text-gray-800 border border-gray-300"
+                              }`}
+                              style={
+                                idx === 0
+                                  ? {}
+                                  : {
+                                      backgroundColor: getColorFromHex(
+                                        spool.filament?.color_hex,
+                                      ),
+                                    }
+                              }
+                            >
+                              {getSpoolDisplay(spool)}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Radio button indicator */}
+                    <div
+                      className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 mt-1 ${
+                        isSelected
+                          ? "border-blue-500 bg-blue-500"
+                          : "border-gray-300"
+                      }`}
+                    >
+                      {isSelected && (
+                        <div className="w-2 h-2 rounded-full bg-white"></div>
+                      )}
+                    </div>
+                  </div>
+                </button>
+              );
+            })
+          )}
+        </div>
+      </div>
+
+      {isPending && (
+        <p className="text-sm text-gray-500 text-center">Updating...</p>
       )}
-    </>
+    </div>
   );
 }

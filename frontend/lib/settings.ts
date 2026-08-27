@@ -1,6 +1,7 @@
 import { cacheLife, cacheTag, revalidateTag } from "next/cache";
 import { grpcClient } from "./grpc";
 import { getSpool } from "./spool";
+import { trayIndexToLocationName } from "./client/settings";
 
 export async function revalidateSettings() {
   "use server";
@@ -17,7 +18,7 @@ export async function getSettings() {
 }
 
 /**
- * Gets the spool in a tray
+ * Gets the spool locked to a tray (for RFID tray locking feature)
  * @param tray The tray to get
  * @returns The Spool in a tray, if any
  */
@@ -29,6 +30,17 @@ export async function getSpoolInTray(tray: number) {
     return null;
   }
   return getSpool(spoolId.toString());
+}
+
+/**
+ * Gets the Spoolman location mapped to a physical tray position.
+ * @param tray The tray index
+ * @returns The Spoolman location name, if any
+ */
+export async function getLocationForTray(tray: number) {
+  const settings = await getSettings();
+  const physicalLocation = trayIndexToLocationName(tray);
+  return settings.locationMapping?.[physicalLocation] ?? null;
 }
 
 export async function isLocked(tray: number) {

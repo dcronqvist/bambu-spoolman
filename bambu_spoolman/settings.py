@@ -1,5 +1,6 @@
 import json
 import os
+from loguru import logger
 
 EXTERNAL_SPOOL_ID = 255
 
@@ -29,4 +30,39 @@ def load_settings():
             if os.environ.get("SPOOLMAN_SPOOL_FIELD_NAME") is None:
                 data["locked_trays"] = []
             return data
-    return {"trays": {}, "tray_count": 0}
+    return {"trays": {}, "tray_count": 0, "location_mapping": {}}
+
+
+def tray_id_to_location_name(tray_id):
+    """
+    Convert a tray_id to a physical location name.
+    Format: "AMS{ams_index+1}-Slot{slot_index+1}"
+    
+    Args:
+        tray_id: 0-indexed tray ID or 255 for external spool
+        
+    Returns:
+        Location name string (e.g., "AMS1-Slot1") or "External" for external spool
+    """
+    if tray_id == EXTERNAL_SPOOL_ID:
+        return "External"
+    
+    ams_index = tray_id // 4
+    slot_index = tray_id % 4
+    return f"AMS{ams_index + 1}-Slot{slot_index + 1}"
+
+
+def get_location_for_tray_id(settings, tray_id):
+    """
+    Get the Spoolman location name mapped to a physical tray position.
+    
+    Args:
+        settings: Settings dict
+        tray_id: 0-indexed tray ID
+        
+    Returns:
+        Location name string or None if not mapped
+    """
+    location_mapping = settings.get("location_mapping", {})
+    physical_location = tray_id_to_location_name(tray_id)
+    return location_mapping.get(physical_location)

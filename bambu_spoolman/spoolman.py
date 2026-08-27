@@ -480,6 +480,39 @@ class SpoolmanClient:
         spool = self.create_spool(filament["id"], tray_uuid, weight_int)
         return spool
 
+    def get_locations(self):
+        """
+        Get a list of all Spoolman locations
+        """
+        try:
+            response = requests.get(
+                self._make_api_route("location"), verify=self.verify
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            logger.error(f"Exception getting locations: {e}")
+            return []
+
+    def get_spools_by_location(self, location_name):
+        """
+        Get all spools at a specific location, sorted by ID (ascending).
+        Returns empty list if location doesn't exist or has no spools.
+        """
+        try:
+            # Query spools filtered by location
+            response = requests.get(
+                self._make_api_route("spool", location=location_name),
+                verify=self.verify,
+            )
+            response.raise_for_status()
+            spools = response.json()
+            # Sort by ID ascending so first spool is lowest ID
+            return sorted(spools, key=lambda s: s.get("id", float("inf")))
+        except Exception as e:
+            logger.error(f"Exception getting spools at location '{location_name}': {e}")
+            return []
+
     def _get_or_create_vendor(self, vendor_name):
         """
         Gets a vendor by name or creates it if it doesn't exist

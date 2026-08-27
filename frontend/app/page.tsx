@@ -1,5 +1,4 @@
 import AmsComponent from "@/components/AmsComponent";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -7,7 +6,6 @@ import {
 } from "@/components/ui/breadcrumb";
 import { Suspense } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CurrentSpool } from "@/components/tray-config/CurrentSpool";
 import { getSettings } from "@/lib/settings";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -25,43 +23,8 @@ function SkeletonPage() {
         <h1 className="text-2xl font-semibold mb-4">
           BambuLab Spoolman Integration
         </h1>
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              <Skeleton className="w-20 h-6" />
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <Skeleton className="w-full h-32" />
-          </CardContent>
-        </Card>
       </div>
     </>
-  );
-}
-
-async function ExternalSpoolConfiguration() {
-  const settings = await getSettings();
-  const externalSpoolId = settings.trays[255];
-  return (
-    <div className="flex mb-4">
-      <Card className="w-full">
-        <CardHeader>
-          <CardTitle>External Spool Configuration</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {externalSpoolId != null ? (
-            <Link href="/external-spool" className="w-full">
-              <CurrentSpool trayId={255} showClearButton={false} />
-            </Link>
-          ) : (
-            <Button variant="outline" asChild>
-              <Link href="/external-spool">Configure</Link>
-            </Button>
-          )}
-        </CardContent>
-      </Card>
-    </div>
   );
 }
 
@@ -90,7 +53,11 @@ async function HomePage() {
         <h1 className="text-2xl font-semibold mb-4">
           BambuLab Spoolman Integration
         </h1>
-        <ExternalSpoolConfiguration />
+        <div className="mb-6">
+          <Link href="/external-spool">
+            <Button variant="outline">Configure External Spool</Button>
+          </Link>
+        </div>
         <div className="flex flex-col gap-4">
           <AmsConfiguration />
         </div>

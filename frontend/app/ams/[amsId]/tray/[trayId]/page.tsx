@@ -7,7 +7,6 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
-import { CurrentSpool } from "../../../../../components/tray-config/CurrentSpool";
 import { SpoolConfiguration } from "./SpoolConfiguration";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
@@ -36,18 +35,7 @@ function SkeletonPage() {
         </BreadcrumbList>
       </Breadcrumb>
       <Card className="mt-6">
-        <CardHeader>
-          <CardTitle>Current Spool</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Skeleton className="w-full h-24" />
-        </CardContent>
-      </Card>
-      <Card className="mt-6">
-        <CardHeader>
-          <CardTitle>Select Spool</CardTitle>
-        </CardHeader>
-        <CardContent>
+        <CardContent className="pt-6">
           <Skeleton className="w-full h-48" />
           <Button variant="outline" className="mt-4 float-left" asChild>
             <Link href="/">Back</Link>
@@ -118,20 +106,9 @@ async function TrayPage(props: Props) {
           <BreadcrumbItem>Tray {(rawTrayId % 4) + 1}</BreadcrumbItem>
         </BreadcrumbList>
       </Breadcrumb>
-      <Card className="mt-6">
-        <CardHeader>
-          <CardTitle>Current Spool</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <CurrentSpool trayId={trayId} />
-        </CardContent>
-      </Card>
       {trayLockingSupported && <RfidSettings trayId={trayId} />}
       <Card className="mt-6">
-        <CardHeader>
-          <CardTitle>Select Spool</CardTitle>
-        </CardHeader>
-        <CardContent>
+        <CardContent className="pt-6">
           <SpoolConfiguration trayId={trayId} />
           <Button variant="outline" className="mt-4 float-left" asChild>
             <Link href="/">Back</Link>
